@@ -9,20 +9,14 @@ MainWindow::MainWindow(QWidget *parent) :
     //set up ui
     ui->setupUi(this);
 
-    listModel= new QStringListModel(ui->listView);
-    //listModel->setStringList(list);
+    listModel= new QStandardItemModel(ui->listView);
     ui->listView->setModel(listModel);
 
     treeModel = new QStandardItemModel(ui->treeView);
     ui->treeView->setModel(treeModel);
 
-    QStandardItem *uncategorized = new QStandardItem("Uncategorized");
-    treeModel->appendRow(uncategorized);
-    categorieMap.insert("Uncategorized",uncategorized);
-
-
     setting = new QSettings("my","feeder",this);
-    subDialog = NULL;
+    subDialog = new SubscribeDialog(this);
 
     //set up oauth2
     o2 = new O2(this);
@@ -59,6 +53,8 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->treeView,SIGNAL(clicked(QModelIndex)),this,SLOT(onTreeViewClicked(QModelIndex)));
     connect(o2req,SIGNAL(finished(int,QNetworkReply::NetworkError,QByteArray)),this,SLOT(onReqFinished(int,QNetworkReply::NetworkError,QByteArray)));
 
+    connect(subDialog,SIGNAL(accepted()),this,SLOT(on_subscibe()));
+
     reqCategories();
 }
 
@@ -67,29 +63,6 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::on_actionAbout_Qt_triggered()
-{
-    QMessageBox::aboutQt(this);
-
-}
-
-void MainWindow::onTreeViewClicked(const QModelIndex &)
-{
-    qDebug("TreeView Clicked");
-    QModelIndex currentIndex = ui->treeView->currentIndex();
-    QStandardItem *currentItem = treeModel->itemFromIndex(currentIndex);
-    QString contentId = currentItem->data(SUBSCRIPTION).toString();
-
-    qDebug()<<currentItem->text();
-    qDebug()<<contentId;
-    if(!contentId.isEmpty()) {
-        QString url = STREAMS_CONTENTS_URL + contentId;
-        request.setUrl(QUrl(url));
-        reqStatus = Contents;
-        o2req->get(request);
-    }
-
-}
 
 
 void MainWindow::onLinkedChanged() {
@@ -148,19 +121,6 @@ void MainWindow::onReqFinished(int id, QNetworkReply::NetworkError error, QByteA
     //qDebug("%s",data.data());
 }
 
-
-void MainWindow::on_actionSubscribe_to_a_feed_triggered()
-{
-    if(!subDialog) {
-        subDialog = new SubscribeDialog(this);
-    }
-    subDialog->show();
-    subDialog->raise();
-    subDialog->activateWindow();
-
-    connect(subDialog,SIGNAL(accepted()),this,SLOT(on_subscibe()));
-}
-
 bool MainWindow::on_subscibe()
 {
     QJsonObject *json = new QJsonObject();
@@ -211,22 +171,31 @@ void MainWindow::reqSubscriptions()
 
 void MainWindow::handleCategoryResp(QByteArray data)
 {
+    if(!categorieMap.contains("Uncategorized")) {
+        QStandardItem *uncategorized = new QStandardItem("Uncategorized");
+        uncategorized->setData(QVariant::fromValue(QString("user/" + userId + "/category/global.uncategorized")),CATEGORY_ID);
+        treeModel->appendRow(uncategorized);
+        categorieMap.insert("Uncategorized",uncategorized);
+    }
+
     QJsonParseError jerror;
     QJsonDocument doc = QJsonDocument::fromJson(data,&jerror);
     qDebug()<<doc;
     if(jerror.error == QJsonParseError::NoError || ! doc.isEmpty()) {
         QJsonArray arr = doc.array();
-        QString temp;
+        QString tempLabel,tempId;
 
         for(int row = 0;row<arr.size();row++)
         {
             QJsonObject obj = arr[row].toObject();
-            temp = obj.value("label").toString();
-            qDebug()<<temp;
-            if(!categorieMap.contains(temp)) {
-                QStandardItem *category = new QStandardItem(temp);
+            tempLabel = obj.value("label").toString();
+            tempId = obj.value("id").toString();
+            qDebug()<<tempLabel;
+            if(!categorieMap.contains(tempLabel)) {
+                QStandardItem *category = new QStandardItem(tempLabel);
+                category->setData(QVariant::fromValue(tempId),CATEGORY_ID);
                 treeModel->appendRow(category);
-                categorieMap.insert(temp,category);
+                categorieMap.insert(tempLabel,category);
             }
         }
 
@@ -275,7 +244,7 @@ void MainWindow::handleSubscriptionsResp(QByteArray data)
                 templabel = "Uncategorized";
             }
             parent = categorieMap.find(templabel).value();
-            sub->setData(QVariant::fromValue(tempId),SUBSCRIPTION);
+            sub->setData(QVariant::fromValue(tempId),FEED_ID);
             parent->appendRow(sub);
         }
     }
@@ -286,24 +255,80 @@ void MainWindow::handleContentsResp(QByteArray data)
 {
     QJsonParseError jerror;
     QJsonDocument doc = QJsonDocument::fromJson(data,&jerror);
-    QString tempTitle,tempContent;
+    QString tempTitle,tempContent,tempEntryId;
     QJsonObject tempObject;
     int i = 1;
-    qDebug()<<doc;
+    //qDebug()<<doc;
     if(jerror.error == QJsonParseError::NoError || ! doc.isEmpty()) {
+        listModel->clear();
         QJsonObject obj = doc.object();
         QJsonArray arr = obj.value("items").toArray();
         for(int row = 0;row<arr.size();row++)
         {
             QJsonObject obj2 = arr[row].toObject();
             tempTitle = obj2.value("title").toString();
-            qDebug() << tempTitle;
-            tempObject = obj2.value("summary").toObject();
-            tempContent = tempObject.value("content").toString();
-            if( 1 == i ) {
-                ui->webView->setHtml(tempContent);
-                i++;
+            if(!tempTitle.isEmpty()) {
+                qDebug() << tempTitle;
+                tempObject = obj2.value("summary").toObject();
+                tempContent = tempObject.value("content").toString();
+
+                tempEntryId = obj2.value("id").toString();
+
+                QStandardItem *contentTitle = new QStandardItem(tempTitle);
+                contentTitle->setData(QVariant::fromValue(tempContent),CONTENT);
+                contentTitle->setData(QVariant::fromValue(tempEntryId),CONTENT_ENTRY_ID);
+
+                listModel->appendRow(contentTitle);
             }
         }
     }
+}
+
+void MainWindow::on_actionAbout_Qt_triggered()
+{
+    QMessageBox::aboutQt(this);
+
+}
+
+void MainWindow::on_actionSubscribe_to_a_feed_triggered()
+{
+    if(!subDialog) {
+        subDialog = new SubscribeDialog(this);
+    }
+    subDialog->show();
+    subDialog->raise();
+    subDialog->activateWindow();
+}
+
+void MainWindow::onTreeViewClicked(const QModelIndex &)
+{
+    qDebug("TreeView Clicked");
+    QModelIndex currentIndex = ui->treeView->currentIndex();
+    QStandardItem *currentItem = treeModel->itemFromIndex(currentIndex);
+    QString contentId = currentItem->data(FEED_ID).toString();
+
+    qDebug()<<currentItem->text();
+    //A feed item clicked
+    if(!contentId.isEmpty()) {
+        qDebug()<<contentId;
+        QString url = STREAMS_CONTENTS_URL + contentId;
+        request.setUrl(QUrl(url));
+        request.setHeader(QNetworkRequest::ContentTypeHeader,"application/x-gzip-compressed");
+        reqStatus = Contents;
+        o2req->get(request);
+    }
+    //A category item clicked
+    else {
+        QString categoryId = currentItem->data(CATEGORY_ID).toString();
+        qDebug()<<categoryId;
+    }
+}
+
+void MainWindow::on_listView_clicked(const QModelIndex &index)
+{
+    qDebug("ListView Clicked");
+    QModelIndex currentIndex = ui->listView->currentIndex();
+    QStandardItem *currentItem = listModel->itemFromIndex(currentIndex);
+    QString content = currentItem->data(CONTENT).toString();
+    ui->webView->setHtml(content);
 }

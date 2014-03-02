@@ -32,8 +32,10 @@
 #include <o2/src/o2requestor.h>
 
 #include <subscribedialog.h>
-#define SUBSCRIPTION 100
-
+#define FEED_ID 100
+#define CONTENT 101
+#define CONTENT_ENTRY_ID 102
+#define CATEGORY_ID 103
 const char CLIENT_SECRET[] = "W60IW73DYSUIISZX4OUP";
 const char CLIENT_ID[] = "sandbox";
 const char TOKEN_URL[] = "https://sandbox.feedly.com/v3/auth/token";
@@ -71,6 +73,8 @@ private slots:
     void handleCategoryResp(QByteArray data);
     void handleSubscriptionsResp(QByteArray data);
     void handleContentsResp(QByteArray data);
+    void on_listView_clicked(const QModelIndex &index);
+
 private:
 
     enum ReqStatus {
@@ -90,7 +94,7 @@ private:
     SubscribeDialog *subDialog;
 
     QList<QTreeWidgetItem *> items;
-    QStringListModel *listModel;
+    QStandardItemModel *listModel;
     QStandardItemModel *treeModel;
 
     QMap<QString,QStandardItem*> categorieMap;
