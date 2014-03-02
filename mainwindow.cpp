@@ -15,6 +15,9 @@ MainWindow::MainWindow(QWidget *parent) :
     treeModel = new QStandardItemModel(ui->treeView);
     ui->treeView->setModel(treeModel);
 
+    listMenu = new QMenu("ListMenu",this);
+    treeMenu = new QMenu("TreeMenu",this);
+
     setting = new QSettings("my","feeder",this);
     subDialog = new SubscribeDialog(this);
 
@@ -52,7 +55,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(o2,SIGNAL(tokenChanged()),this,SLOT(onTokenChanged()));
     connect(ui->treeView,SIGNAL(clicked(QModelIndex)),this,SLOT(onTreeViewClicked(QModelIndex)));
     connect(o2req,SIGNAL(finished(int,QNetworkReply::NetworkError,QByteArray)),this,SLOT(onReqFinished(int,QNetworkReply::NetworkError,QByteArray)));
-
+    connect(ui->treeView,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(on_listView_customContextMenuRequested(QPoint)));
     connect(subDialog,SIGNAL(accepted()),this,SLOT(on_subscibe()));
 
     reqCategories();
@@ -116,6 +119,7 @@ void MainWindow::onReqFinished(int id, QNetworkReply::NetworkError error, QByteA
         break;
     case Contents:
         handleContentsResp(data);
+        break;
     }
     //qDebug()<<data.length();
     //qDebug("%s",data.data());
@@ -255,7 +259,8 @@ void MainWindow::handleContentsResp(QByteArray data)
 {
     QJsonParseError jerror;
     QJsonDocument doc = QJsonDocument::fromJson(data,&jerror);
-    QString tempTitle,tempContent,tempEntryId;
+    QString tempTitle,tempContent,tempEntryId,tempHref;
+    bool Unread;
     QJsonObject tempObject;
     int i = 1;
     //qDebug()<<doc;
@@ -267,16 +272,22 @@ void MainWindow::handleContentsResp(QByteArray data)
         {
             QJsonObject obj2 = arr[row].toObject();
             tempTitle = obj2.value("title").toString();
+            Unread = obj2.value("unread").toBool();
+
             if(!tempTitle.isEmpty()) {
                 qDebug() << tempTitle;
                 tempObject = obj2.value("summary").toObject();
                 tempContent = tempObject.value("content").toString();
-
                 tempEntryId = obj2.value("id").toString();
+
+                tempObject = obj2.value("alternate").toObject();
+                tempHref = tempObject.value("href").toString();
 
                 QStandardItem *contentTitle = new QStandardItem(tempTitle);
                 contentTitle->setData(QVariant::fromValue(tempContent),CONTENT);
                 contentTitle->setData(QVariant::fromValue(tempEntryId),CONTENT_ENTRY_ID);
+                contentTitle->setData(QVariant::fromValue(tempHref),CONTENT_HREF);
+                contentTitle->setData(QVariant::fromValue(Unread),CONTENT_UNREAD);
 
                 listModel->appendRow(contentTitle);
             }
@@ -329,6 +340,24 @@ void MainWindow::on_listView_clicked(const QModelIndex &index)
     qDebug("ListView Clicked");
     QModelIndex currentIndex = ui->listView->currentIndex();
     QStandardItem *currentItem = listModel->itemFromIndex(currentIndex);
+
     QString content = currentItem->data(CONTENT).toString();
     ui->webView->setHtml(content);
+}
+
+void MainWindow::on_listView_customContextMenuRequested(const QPoint &pos)
+{
+
+    QPoint globalPos = ui->listView->mapToGlobal(pos);
+    QModelIndex index = ui->listView->indexAt(pos);
+    QStandardItem *item = listModel->itemFromIndex(index);
+    qDebug() << "Right Click on" << item->data(CONTENT_ENTRY_ID).toString();
+    qDebug() << "Href: " << item->data(CONTENT_HREF).toString();
+    qDebug() << "Unread: " << item->data(CONTENT_UNREAD).toBool();
+
+    if(listMenu) {
+        listMenu->clear();
+        listMenu->addAction("Action");
+        listMenu->exec(globalPos);
+    }
 }

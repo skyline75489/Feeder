@@ -19,7 +19,7 @@
 #include <QTreeWidgetItem>
 #include <QStandardItem>
 #include <QStandardItemModel>
-
+#include <QMenu>
 #include <QModelIndex>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -32,10 +32,14 @@
 #include <o2/src/o2requestor.h>
 
 #include <subscribedialog.h>
+
 #define FEED_ID 100
 #define CONTENT 101
 #define CONTENT_ENTRY_ID 102
 #define CATEGORY_ID 103
+#define CONTENT_HREF 104
+#define CONTENT_UNREAD 105
+
 const char CLIENT_SECRET[] = "W60IW73DYSUIISZX4OUP";
 const char CLIENT_ID[] = "sandbox";
 const char TOKEN_URL[] = "https://sandbox.feedly.com/v3/auth/token";
@@ -59,21 +63,27 @@ public:
 
 private slots:
     void on_actionAbout_Qt_triggered();
-    void onTreeViewClicked(const QModelIndex &);
+
+    //Deal with OAuth2
     void onLinkedChanged();
     void onLinkingFailed();
     void onLinkingSucceeded();
     void onOpenBrowser(const QUrl &url);
     void onTokenChanged();
+    //Deal with Various requset
     void onReqFinished(int id, QNetworkReply::NetworkError error, QByteArray data);
-    void on_actionSubscribe_to_a_feed_triggered();
     bool on_subscibe();
     void reqCategories();
     void reqSubscriptions();
     void handleCategoryResp(QByteArray data);
     void handleSubscriptionsResp(QByteArray data);
     void handleContentsResp(QByteArray data);
+    //UI signal
+    void on_actionSubscribe_to_a_feed_triggered();
+    void onTreeViewClicked(const QModelIndex &);
     void on_listView_clicked(const QModelIndex &index);
+
+    void on_listView_customContextMenuRequested(const QPoint &pos);
 
 private:
 
@@ -97,6 +107,8 @@ private:
     QStandardItemModel *listModel;
     QStandardItemModel *treeModel;
 
+    QMenu *listMenu;
+    QMenu *treeMenu;
     QMap<QString,QStandardItem*> categorieMap;
     QMap<QString,QStringList> subscriptionMap;
 };
