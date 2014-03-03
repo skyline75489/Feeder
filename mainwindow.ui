@@ -96,12 +96,16 @@
        </property>
        <property name="font">
         <font>
+         <family>Serif</family>
          <pointsize>10</pointsize>
          <underline>true</underline>
         </font>
        </property>
        <property name="contextMenuPolicy">
         <enum>Qt::CustomContextMenu</enum>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QListView::item::text { font-weight:bold;}</string>
        </property>
        <property name="midLineWidth">
         <number>0</number>
@@ -113,10 +117,10 @@
         <enum>QListView::Adjust</enum>
        </property>
        <property name="spacing">
-        <number>1</number>
+        <number>5</number>
        </property>
        <property name="wordWrap">
-        <bool>false</bool>
+        <bool>true</bool>
        </property>
       </widget>
       <widget class="QWebView" name="webView">

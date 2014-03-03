@@ -15,11 +15,14 @@ MainWindow::MainWindow(QWidget *parent) :
     treeModel = new QStandardItemModel(ui->treeView);
     ui->treeView->setModel(treeModel);
 
-    listMenu = new QMenu("ListMenu",this);
+    listMenu = new QMenu(this);
     treeMenu = new QMenu("TreeMenu",this);
 
     setting = new QSettings("my","feeder",this);
     subDialog = new SubscribeDialog(this);
+
+    markArticleAsRead = new QAction("Mark As Read",this);
+    markArticleAsUnread = new QAction("Mark As Unread",this);
 
     //set up oauth2
     o2 = new O2(this);
@@ -53,11 +56,11 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(o2, SIGNAL(linkingSucceeded()), this, SLOT(onLinkingSucceeded()));
     connect(o2, SIGNAL(openBrowser(QUrl)), this, SLOT(onOpenBrowser(QUrl)));
     connect(o2,SIGNAL(tokenChanged()),this,SLOT(onTokenChanged()));
-    connect(ui->treeView,SIGNAL(clicked(QModelIndex)),this,SLOT(onTreeViewClicked(QModelIndex)));
+    connect(ui->treeView,SIGNAL(clicked(QModelIndex)),this,SLOT(on_treeView_clicked(QModelIndex)));
     connect(o2req,SIGNAL(finished(int,QNetworkReply::NetworkError,QByteArray)),this,SLOT(onReqFinished(int,QNetworkReply::NetworkError,QByteArray)));
-    connect(ui->treeView,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(on_listView_customContextMenuRequested(QPoint)));
+    connect(ui->listView,SIGNAL(customContextMenuRequested(QPoint)),this,SLOT(on_listView_customContextMenuRequested(QPoint)));
     connect(subDialog,SIGNAL(accepted()),this,SLOT(on_subscibe()));
-
+    connect(listMenu,SIGNAL(triggered(QAction*)),this,SLOT(on_marker_menu_triggered(QAction*)));
     reqCategories();
 }
 
@@ -99,6 +102,8 @@ void MainWindow::onTokenChanged()
     plan = o2->extraTokens().value("plan").toString();
     store->setValue("id",userId);
     store->setValue("plan",plan);
+
+
 }
 
 //This is ugly, I know. But I have to do this
@@ -120,6 +125,8 @@ void MainWindow::onReqFinished(int id, QNetworkReply::NetworkError error, QByteA
     case Contents:
         handleContentsResp(data);
         break;
+    case Markers:
+        handleMarkersResp(data);
     }
     //qDebug()<<data.length();
     //qDebug("%s",data.data());
@@ -152,8 +159,13 @@ bool MainWindow::on_subscibe()
     request.setUrl(SUBSCRIPTIONS_URL);
     request.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
     o2req->post(request,docu->toJson());
-
     reqCategories();
+
+    delete json;
+    delete j1;
+    delete j2;
+    delete jarr;
+
     return true;
 }
 
@@ -173,11 +185,12 @@ void MainWindow::reqSubscriptions()
     o2req->get(request);
 }
 
+
 void MainWindow::handleCategoryResp(QByteArray data)
 {
     if(!categorieMap.contains("Uncategorized")) {
         QStandardItem *uncategorized = new QStandardItem("Uncategorized");
-        uncategorized->setData(QVariant::fromValue(QString("user/" + userId + "/category/global.uncategorized")),CATEGORY_ID);
+        uncategorized->setData(QVariant::fromValue(QString("user/" + userId + "/category/global.uncategorized")),CATEGORY_ENTRY_ID);
         treeModel->appendRow(uncategorized);
         categorieMap.insert("Uncategorized",uncategorized);
     }
@@ -197,7 +210,7 @@ void MainWindow::handleCategoryResp(QByteArray data)
             qDebug()<<tempLabel;
             if(!categorieMap.contains(tempLabel)) {
                 QStandardItem *category = new QStandardItem(tempLabel);
-                category->setData(QVariant::fromValue(tempId),CATEGORY_ID);
+                category->setData(QVariant::fromValue(tempId),CATEGORY_ENTRY_ID);
                 treeModel->appendRow(category);
                 categorieMap.insert(tempLabel,category);
             }
@@ -228,28 +241,31 @@ void MainWindow::handleSubscriptionsResp(QByteArray data)
             tempId = obj.value("id").toString();
             qDebug()<<tempTitle;
 
-            QStandardItem *sub = new QStandardItem(tempTitle);
-            QJsonArray ca = obj.value("categories").toArray();
-            if(!ca.isEmpty()) {
-                for(int row2 = 0;row2<ca.size();row2++) {
-                    QJsonObject obj2 = ca[row2].toObject();
-                    templabel = obj2.value("label").toString();
-                    qDebug()<<templabel;
+            if(!subscription.contains(tempTitle)) {
+                subscription.append(tempTitle);
+                QStandardItem *sub = new QStandardItem(tempTitle);
+                QJsonArray ca = obj.value("categories").toArray();
+                if(!ca.isEmpty()) {
+                    for(int row2 = 0;row2<ca.size();row2++) {
+                        QJsonObject obj2 = ca[row2].toObject();
+                        templabel = obj2.value("label").toString();
+                        qDebug()<<templabel;
 
-                    /*if(subscriptionMap.contains(tempTitle)) {
-                        tempList = subscriptionMap.find(tempTitle).value();
-                        tempList.clear();
+                        /*if(subscriptionMap.contains(tempTitle)) {
+                            tempList = subscriptionMap.find(tempTitle).value();
+                            tempList.clear();
+                        }
+                        tempList.append(templabel);*/
                     }
-                    tempList.append(templabel);*/
+                    //subscriptionMap.insert(tempTitle,tempList);
                 }
-                //subscriptionMap.insert(tempTitle,tempList);
+                else {
+                    templabel = "Uncategorized";
+                }
+                parent = categorieMap.find(templabel).value();
+                sub->setData(QVariant::fromValue(tempId),FEED_ID);
+                parent->appendRow(sub);
             }
-            else {
-                templabel = "Uncategorized";
-            }
-            parent = categorieMap.find(templabel).value();
-            sub->setData(QVariant::fromValue(tempId),FEED_ID);
-            parent->appendRow(sub);
         }
     }
 }
@@ -262,6 +278,7 @@ void MainWindow::handleContentsResp(QByteArray data)
     QString tempTitle,tempContent,tempEntryId,tempHref;
     bool Unread;
     QJsonObject tempObject;
+    QJsonArray tempArray;
     int i = 1;
     //qDebug()<<doc;
     if(jerror.error == QJsonParseError::NoError || ! doc.isEmpty()) {
@@ -280,8 +297,8 @@ void MainWindow::handleContentsResp(QByteArray data)
                 tempContent = tempObject.value("content").toString();
                 tempEntryId = obj2.value("id").toString();
 
-                tempObject = obj2.value("alternate").toObject();
-                tempHref = tempObject.value("href").toString();
+                tempArray = obj2.value("alternate").toArray();
+                tempHref = tempArray.at(0).toObject().value("href").toString();
 
                 QStandardItem *contentTitle = new QStandardItem(tempTitle);
                 contentTitle->setData(QVariant::fromValue(tempContent),CONTENT);
@@ -289,10 +306,69 @@ void MainWindow::handleContentsResp(QByteArray data)
                 contentTitle->setData(QVariant::fromValue(tempHref),CONTENT_HREF);
                 contentTitle->setData(QVariant::fromValue(Unread),CONTENT_UNREAD);
 
+                if(Unread) {
+                    alterItemFont(true,contentTitle);
+                }
                 listModel->appendRow(contentTitle);
             }
         }
     }
+}
+
+
+void MainWindow::handleMarkersResp(QByteArray data)
+{
+
+}
+
+void MainWindow::markAs(bool read, QString id, int status)
+{
+    request.setUrl(MARKERS_URL);
+    request.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
+    reqStatus = Markers;
+
+    QJsonObject *obj = new QJsonObject();
+    QJsonObject *obj2 = new QJsonObject();
+    QJsonArray *arr = new QJsonArray();
+
+    if(read) {
+        obj->insert("action",QJsonValue(QString("markAsRead")));
+    }
+    else {
+        obj->insert("action",QJsonValue(QString("keepUnread")));
+    }
+    if(status == CONTENT_ENTRY_ID) {
+
+        obj->insert("type",QJsonValue(QString("entries")));
+        arr->insert(0,QJsonValue(id));
+        obj->insert("entryIds",*arr);
+    }
+
+    else if(status == CATEGORY_ENTRY_ID) {
+
+    }
+    else if(status == FEED_ID) {
+
+    }
+    QJsonDocument *doc = new QJsonDocument(*obj);
+    o2req->post(request,doc->toJson());
+
+    delete obj;
+    delete obj2;
+    delete arr;
+    delete doc;
+}
+
+void MainWindow::alterItemFont(bool bold, QStandardItem *item)
+{
+    currentFont =  item->font();
+    if(bold) {
+        currentFont.setBold(true);
+    }
+    else {
+        currentFont.setBold(false);
+    }
+    item->setFont(currentFont);
 }
 
 void MainWindow::on_actionAbout_Qt_triggered()
@@ -311,11 +387,11 @@ void MainWindow::on_actionSubscribe_to_a_feed_triggered()
     subDialog->activateWindow();
 }
 
-void MainWindow::onTreeViewClicked(const QModelIndex &)
+void MainWindow::on_treeView_clicked(const QModelIndex &)
 {
     qDebug("TreeView Clicked");
     QModelIndex currentIndex = ui->treeView->currentIndex();
-    QStandardItem *currentItem = treeModel->itemFromIndex(currentIndex);
+    currentItem = treeModel->itemFromIndex(currentIndex);
     QString contentId = currentItem->data(FEED_ID).toString();
 
     qDebug()<<currentItem->text();
@@ -330,7 +406,7 @@ void MainWindow::onTreeViewClicked(const QModelIndex &)
     }
     //A category item clicked
     else {
-        QString categoryId = currentItem->data(CATEGORY_ID).toString();
+        QString categoryId = currentItem->data(CATEGORY_ENTRY_ID).toString();
         qDebug()<<categoryId;
     }
 }
@@ -338,26 +414,60 @@ void MainWindow::onTreeViewClicked(const QModelIndex &)
 void MainWindow::on_listView_clicked(const QModelIndex &index)
 {
     qDebug("ListView Clicked");
+    if(!listMenu->isHidden()) {
+        listMenu->hide();
+    }
     QModelIndex currentIndex = ui->listView->currentIndex();
-    QStandardItem *currentItem = listModel->itemFromIndex(currentIndex);
+    currentItem = listModel->itemFromIndex(currentIndex);
 
+    bool unread = currentItem->data(CONTENT_UNREAD).toBool();
+    QString id = currentItem->data(CONTENT_ENTRY_ID).toString();
     QString content = currentItem->data(CONTENT).toString();
     ui->webView->setHtml(content);
+    if(unread) {
+        markAs(true,id,CONTENT_ENTRY_ID);
+        alterItemFont(false,currentItem);
+        currentItem->setData(false,CONTENT_UNREAD);
+    }
 }
 
 void MainWindow::on_listView_customContextMenuRequested(const QPoint &pos)
 {
-
     QPoint globalPos = ui->listView->mapToGlobal(pos);
     QModelIndex index = ui->listView->indexAt(pos);
-    QStandardItem *item = listModel->itemFromIndex(index);
-    qDebug() << "Right Click on" << item->data(CONTENT_ENTRY_ID).toString();
-    qDebug() << "Href: " << item->data(CONTENT_HREF).toString();
-    qDebug() << "Unread: " << item->data(CONTENT_UNREAD).toBool();
+    currentItem = listModel->itemFromIndex(index);
+    if(!currentItem)
+        return;
+    qDebug() << "Right Click on" << currentItem->data(CONTENT_ENTRY_ID).toString();
+    qDebug() << "Href: " << currentItem->data(CONTENT_HREF).toString();
+    bool unread = currentItem->data(CONTENT_UNREAD).toBool();
 
-    if(listMenu) {
+    if(!listMenu->isEmpty()) {
         listMenu->clear();
-        listMenu->addAction("Action");
-        listMenu->exec(globalPos);
+    }
+    //listMenu = new QMenu(this);
+    if(unread) {
+        listMenu->addAction(markArticleAsRead);
+    }
+    else {
+        listMenu->addAction(markArticleAsUnread);
+    }
+    //listMenu->exec(globalPos);
+    listMenu->popup(globalPos);
+}
+
+void MainWindow::on_marker_menu_triggered(QAction *action)
+{
+    QString id = currentItem->data(CONTENT_ENTRY_ID).toString();
+    qDebug() << "Context Menu on Article";
+    if(action == markArticleAsRead) {
+        markAs(true,id,CONTENT_ENTRY_ID);
+        alterItemFont(false,currentItem);
+        currentItem->setData(false,CONTENT_UNREAD);
+    }
+    else if(action == markArticleAsUnread) {
+        markAs(false,id,CONTENT_ENTRY_ID);
+        alterItemFont(true,currentItem);
+        currentItem->setData(true,CONTENT_UNREAD);
     }
 }

@@ -36,7 +36,7 @@
 #define FEED_ID 100
 #define CONTENT 101
 #define CONTENT_ENTRY_ID 102
-#define CATEGORY_ID 103
+#define CATEGORY_ENTRY_ID 103
 #define CONTENT_HREF 104
 #define CONTENT_UNREAD 105
 
@@ -49,6 +49,9 @@ const char REFRESH_TOKEN_URL[] = "http://sandbox.feedly.com/v3/auth/token";
 const QString SUBSCRIPTIONS_URL = "http://sandbox.feedly.com/v3/subscriptions";
 const QString CATEGORIES_URL = "http://sandbox.feedly.com/v3/categories";
 const QString STREAMS_CONTENTS_URL = "http://sandbox.feedly.com/v3/streams/contents?streamId=";
+const QString MARKERS_URL = "http://sandbox.feedly.com/v3/markers";
+
+
 namespace Ui {
 class MainWindow;
 }
@@ -73,22 +76,25 @@ private slots:
     //Deal with Various requset
     void onReqFinished(int id, QNetworkReply::NetworkError error, QByteArray data);
     bool on_subscibe();
-    void reqCategories();
-    void reqSubscriptions();
     void handleCategoryResp(QByteArray data);
     void handleSubscriptionsResp(QByteArray data);
     void handleContentsResp(QByteArray data);
+    void handleMarkersResp(QByteArray data);
     //UI signal
     void on_actionSubscribe_to_a_feed_triggered();
-    void onTreeViewClicked(const QModelIndex &);
+    void on_treeView_clicked(const QModelIndex &);
     void on_listView_clicked(const QModelIndex &index);
-
     void on_listView_customContextMenuRequested(const QPoint &pos);
-
+    void on_marker_menu_triggered(QAction *action);
 private:
 
+    void reqCategories();
+    void reqSubscriptions();
+    void markAs(bool read, QString id,int status);
+    void alterItemFont(bool bold, QStandardItem *item);
+
     enum ReqStatus {
-        Auth,Preference,Categories,Subscriptions,Tags,Contents
+        Auth,Preference,Categories,Subscriptions,Tags,Contents,Markers
     };
 
     Ui::MainWindow *ui;
@@ -106,11 +112,14 @@ private:
     QList<QTreeWidgetItem *> items;
     QStandardItemModel *listModel;
     QStandardItemModel *treeModel;
-
+    QStandardItem *currentItem;
+    QFont currentFont;
     QMenu *listMenu;
     QMenu *treeMenu;
+    QAction *markArticleAsRead;
+    QAction *markArticleAsUnread;
     QMap<QString,QStandardItem*> categorieMap;
-    QMap<QString,QStringList> subscriptionMap;
+    QVector<QString> subscription;
 };
 
 #endif // MAINWINDOW_H
