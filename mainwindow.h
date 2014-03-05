@@ -39,6 +39,7 @@
 #define CATEGORY_ENTRY_ID 103
 #define CONTENT_HREF 104
 #define CONTENT_UNREAD 105
+#define LAST_READ_ENTRY_ID 106
 
 const char CLIENT_SECRET[] = "W60IW73DYSUIISZX4OUP";
 const char CLIENT_ID[] = "sandbox";
@@ -85,7 +86,11 @@ private slots:
     void on_treeView_clicked(const QModelIndex &);
     void on_listView_clicked(const QModelIndex &index);
     void on_listView_customContextMenuRequested(const QPoint &pos);
-    void on_marker_menu_triggered(QAction *action);
+    void on_listView_menu_triggered(QAction *action);
+    void on_treeView_menu_triggered(QAction *action);
+
+    void on_treeView_customContextMenuRequested(const QPoint &pos);
+
 private:
 
     void reqCategories();
@@ -113,12 +118,18 @@ private:
     QStandardItemModel *listModel;
     QStandardItemModel *treeModel;
     QStandardItem *currentItem;
+    QStandardItem *currentCategory;
+    QStandardItem *currentFeed;
     QFont currentFont;
     QMenu *listMenu;
     QMenu *treeMenu;
     QAction *markArticleAsRead;
     QAction *markArticleAsUnread;
+    QAction *markFeedAllAsRead;
+    QAction *markCategoryAllAsRead;
     QMap<QString,QStandardItem*> categorieMap;
+
+
     QVector<QString> subscription;
 };
 
