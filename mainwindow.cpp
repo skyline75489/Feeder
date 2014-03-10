@@ -258,7 +258,7 @@ void MainWindow::handleSubscriptionsResp(QByteArray data)
                     templabel = "Uncategorized";
                 }
                 parent = categorieMap.find(templabel).value();
-                if(parent) {
+                if(parent && !tempId.isEmpty()) {
                     sub->setData(QVariant::fromValue(tempId),FEED_ID);
                     parent->appendRow(sub);
                 }
@@ -399,6 +399,7 @@ void MainWindow::on_treeView_clicked(const QModelIndex &)
 
     qDebug()<<currentItem->text();
     //A feed item clicked
+    reqStatus = Contents;
     if(!contentId.isEmpty()) {
         qDebug()<<contentId;
         currentFeed = currentItem;
@@ -407,7 +408,7 @@ void MainWindow::on_treeView_clicked(const QModelIndex &)
         QString url = STREAMS_CONTENTS_URL + contentId;
         request.setUrl(QUrl(url));
         request.setHeader(QNetworkRequest::ContentTypeHeader,"application/x-gzip-compressed");
-        reqStatus = Contents;
+
         o2req->get(request);
     }
     //A category item clicked
@@ -435,8 +436,8 @@ void MainWindow::on_listView_clicked(const QModelIndex &index)
         markAs(true,id,CONTENT_ENTRY_ID);
         alterItemFont(false,currentItem);
         currentItem->setData(false,CONTENT_UNREAD);
-        currentCategory->setData(QVariant(CONTENT_ENTRY_ID),LAST_READ_ENTRY_ID);
-        currentFeed->setData(QVariant(CONTENT_ENTRY_ID),LAST_READ_ENTRY_ID);
+        currentCategory->setData(currentItem->data(CONTENT_ENTRY_ID),LAST_READ_ENTRY_ID);
+        currentFeed->setData(currentItem->data(CONTENT_ENTRY_ID),LAST_READ_ENTRY_ID);
     }
 }
 
@@ -479,11 +480,13 @@ void MainWindow::on_treeView_customContextMenuRequested(const QPoint &pos)
     //Right click on a feed
     if(!feedId.isEmpty()) {
         qDebug()<<"Right Clicked on a Feed";
+        currentFeed = currentItem;
         treeMenu->addAction(markFeedAllAsRead);
     }
     //Right click on a category
     else if(!categoryId.isEmpty()){
         qDebug()<<"Right Clicked on a Category";
+        currentCategory = currentItem;
         treeMenu->addAction(markCategoryAllAsRead);
     }
 
@@ -509,5 +512,10 @@ void MainWindow::on_listView_menu_triggered(QAction *action)
 
 void MainWindow::on_treeView_menu_triggered(QAction *action)
 {
-
+    if(action == markFeedAllAsRead) {
+        markAs(true,currentFeed->data(FEED_ID).toString(),FEED_ID);
+    }
+    else if(action == markCategoryAllAsRead) {
+        markAs(true,currentCategory->data(CATEGORY_ENTRY_ID).toString(),CATEGORY_ENTRY_ID);
+    }
 }
